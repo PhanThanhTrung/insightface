@@ -80,7 +80,7 @@ def calculate_roc(thresholds,
     if pca == 0 and metrics == "euler":
         diff = np.subtract(embeddings1, embeddings2)
         dist = np.sum(np.square(diff), 1)
-    elif pca == 1 and metrics == "consine":
+    elif pca == 1 and metrics == "cosine":
         diff = np.dot(embeddings1, embeddings2)
     
     print(np.max(diff), " ", np.min(diff))
@@ -145,7 +145,7 @@ def calculate_val(thresholds,
                   actual_issame,
                   far_target,
                   nrof_folds=10, 
-                  metrics="euler"):
+                  metrics="cosine"):
     assert (embeddings1.shape[0] == embeddings2.shape[0])
     assert (embeddings1.shape[1] == embeddings2.shape[1])
     nrof_pairs = min(len(actual_issame), embeddings1.shape[0])
@@ -158,7 +158,7 @@ def calculate_val(thresholds,
         diff = np.subtract(embeddings1, embeddings2)
         dist = np.sum(np.square(diff), 1)
         indices = np.arange(nrof_pairs)
-    elif metrics == "consine":
+    elif metrics == "cosine":
         diff = np.dot(embeddings1, embeddings2)
 
     print(np.max(diff), " ", np.min(diff))
@@ -204,7 +204,7 @@ def calculate_val_far(threshold, dist, actual_issame):
     return val, far
 
 
-def evaluate(embeddings, actual_issame, nrof_folds=10, pca=0,metrics="euler"):
+def evaluate(embeddings, actual_issame, nrof_folds=10, pca=0, metrics="cosine"):
     # Calculate evaluation metrics
     embeddings1 = embeddings[0::2]
     embeddings2 = embeddings[1::2]
@@ -240,7 +240,8 @@ def evaluate(embeddings, actual_issame, nrof_folds=10, pca=0,metrics="euler"):
                                             embeddings2,
                                             np.asarray(actual_issame),
                                             1e-3,
-                                            nrof_folds=nrof_folds)
+                                            nrof_folds=nrof_folds, 
+                                            metrics="cosine")
         return tpr, fpr, accuracy, threshold, val, val_std, far
 
 def load_bin(path, image_size):
@@ -340,7 +341,7 @@ def test(data_set,
     print('infer time', time_consumed)
     _, _, accuracy,threshold, val, val_std, far = evaluate(embeddings,
                                                  issame_list,
-                                                 nrof_folds=nfolds, metrics= "consine")
+                                                 nrof_folds=nfolds)
     acc2, std2, threshold = np.mean(accuracy), np.std(accuracy), np.mean(np.array(threshold))
     return acc1, std1, acc2, threshold, std2, _xnorm, embeddings_list
 
@@ -623,7 +624,7 @@ if __name__ == '__main__':
         dataset_name =path.split('/')[-1]
         data_set = load_bin(path, image_size)
         acc1, std1, acc2, threshold, std2, xnorm, embeddings_list = test(
-            data_set, model, args.batch_size, metrics='consine', nfolds=args.nfolds)
+            data_set, model, args.batch_size, metrics='cosine', nfolds=args.nfolds)
         print('[%s]XNorm: %f' % (dataset_name, xnorm))
         print('[%s]Accuracy: %1.5f+-%1.5f' %
                 (dataset_name, acc1, std1))
