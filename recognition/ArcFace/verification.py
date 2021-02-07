@@ -82,7 +82,8 @@ def calculate_roc(thresholds,
         dist = np.sum(np.square(diff), 1)
     elif pca == 1 and metrics == "consine":
         diff = np.dot(embeddings1, embeddings2)
-        
+    
+    threshold =[]
     for fold_idx, (train_set, test_set) in enumerate(k_fold.split(indices)):
         #print('train_set', train_set)
         #print('test_set', test_set)
@@ -113,13 +114,14 @@ def calculate_roc(thresholds,
             tprs[fold_idx, threshold_idx], fprs[fold_idx, threshold_idx], _ = calculate_accuracy(
                                           threshold, dist[test_set],
                                           actual_issame[test_set])
+        threshold.append(thresholds[best_threshold_index])
         _, _, accuracy[fold_idx] = calculate_accuracy(
             thresholds[best_threshold_index], dist[test_set],
             actual_issame[test_set])
 
     tpr = np.mean(tprs, 0)
     fpr = np.mean(fprs, 0)
-    return tpr, fpr, accuracy, threshold[best_threshold_index]
+    return tpr, fpr, accuracy, threshold
 
 
 def calculate_accuracy(threshold, dist, actual_issame):
@@ -203,7 +205,7 @@ def evaluate(embeddings, actual_issame, nrof_folds=10, pca=0,metrics="euler"):
     embeddings2 = embeddings[1::2]
     if metrics=="euler":
         thresholds = np.arange(0, 4, 0.01)
-        tpr, fpr, accuracy = calculate_roc(thresholds,
+        tpr, fpr, accuracy,threshold = calculate_roc(thresholds,
                                             embeddings1,
                                             embeddings2,
                                             np.asarray(actual_issame),
@@ -216,7 +218,7 @@ def evaluate(embeddings, actual_issame, nrof_folds=10, pca=0,metrics="euler"):
                                             np.asarray(actual_issame),
                                             1e-3,
                                             nrof_folds=nrof_folds)
-        return tpr, fpr, accuracy, val, val_std, far
+        return tpr, fpr, accuracy, threshold, val, val_std, far
     elif metrics=="cosine":
         thresholds = np.arange(0, 1, 0.001)
         tpr, fpr, accuracy = calculate_roc(thresholds,
@@ -232,7 +234,7 @@ def evaluate(embeddings, actual_issame, nrof_folds=10, pca=0,metrics="euler"):
                                             np.asarray(actual_issame),
                                             1e-3,
                                             nrof_folds=nrof_folds)
-        return tpr, fpr, accuracy, val, val_std, far
+        return tpr, fpr, accuracy, threshold, val, val_std, far
 
 def load_bin(path, image_size):
     try:
@@ -273,7 +275,6 @@ def test(data_set,
     print('testing verification..')
     data_list = data_set[0]
     issame_list = data_set[1]
-    print(np.sum(issame_list)," ",issame_list.shape[0])
     model = onnx_model
     input_name = model.get_inputs()[0].name 
     output_name = model.get_outputs()[0].name
@@ -292,9 +293,9 @@ def test(data_set,
         while ba < data.shape[0]:
             bb = min(ba + batch_size, data.shape[0])
             count = bb - ba
-            data = data_list[i][ba:bb]
+            sample_data = data_list[i][ba:bb]
             time0 = datetime.datetime.now()
-            batch_data = (data/225.0).astype(np.float32)
+            batch_data = (sample_data/225.0).astype(np.float32)
             batch_data = batch_data.asnumpy()
             net_out = model.run([output_name], {input_name: batch_data})
             _embeddings = net_out[0]
@@ -307,7 +308,6 @@ def test(data_set,
             embeddings[ba:bb, :] = _embeddings[(batch_size - count):, :]
             ba = bb
         embeddings_list.append(embeddings)
-
     _xnorm = 0.0
     _xnorm_cnt = 0
     for embed in embeddings_list:
@@ -331,11 +331,11 @@ def test(data_set,
     embeddings = embeddings_list[0] + embeddings_list[1]
     embeddings = sklearn.preprocessing.normalize(embeddings)
     print('infer time', time_consumed)
-    _, _, accuracy, val, val_std, far = evaluate(embeddings,
+    _, _, accuracy,threshold, val, val_std, far = evaluate(embeddings,
                                                  issame_list,
                                                  nrof_folds=nfolds)
-    acc2, std2 = np.mean(accuracy), np.std(accuracy)
-    return acc1, std1, acc2, std2, _xnorm, embeddings_list
+    acc2, std2, threshold = np.mean(accuracy), np.std(accuracy), np.mean(np.array(threshold))
+    return acc1, std1, acc2, threshold, std2, _xnorm, embeddings_list
 
 
 def test_badcase(data_set,
@@ -615,12 +615,14 @@ if __name__ == '__main__':
     for path in data_path:
         dataset_name =path.split('/')[-1]
         data_set = load_bin(path, image_size)
-        acc1, std1, acc2, std2, xnorm, embeddings_list = test(
+        acc1, std1, acc2, threshold, std2, xnorm, embeddings_list = test(
             data_set, model, args.batch_size, args.nfolds)
         print('[%s]XNorm: %f' % (dataset_name, xnorm))
         print('[%s]Accuracy: %1.5f+-%1.5f' %
                 (dataset_name, acc1, std1))
         print('[%s]Accuracy-Flip: %1.5f+-%1.5f' %
                 (dataset_name, acc2, std2))
-        results.append({dataset_name:acc2})
+        print('[%s]Threshold: %f' %
+        (dataset_name, threshold))
+        results.append({dataset_name:{ "acc":acc2, "threshold":threshold})
     print(results)

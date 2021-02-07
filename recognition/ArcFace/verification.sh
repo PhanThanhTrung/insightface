@@ -1,3 +1,3 @@
 python3 verification.py \
-        --data_dir '/mnt/hdd/spaces/miles/test_sets/unaligned'\
-        --model '/mnt/hdd/spaces/miles/evaluate_model/santapo_insightface_resnet100.onnx'\
+        --data_dir '/Users/hit.fluoxetine/Dataset/Face_recognition/test_sets'\
+        --model '/Users/hit.fluoxetine/Downloads/hrnet.onnx'\
