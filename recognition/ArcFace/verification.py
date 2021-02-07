@@ -83,7 +83,7 @@ def calculate_roc(thresholds,
     elif pca == 1 and metrics == "consine":
         diff = np.dot(embeddings1, embeddings2)
 
-    threshold =[]
+    threshold_list =[]
     for fold_idx, (train_set, test_set) in enumerate(k_fold.split(indices)):
         #print('train_set', train_set)
         #print('test_set', test_set)
@@ -114,14 +114,14 @@ def calculate_roc(thresholds,
             tprs[fold_idx, threshold_idx], fprs[fold_idx, threshold_idx], _ = calculate_accuracy(
                                           threshold, dist[test_set],
                                           actual_issame[test_set])
-        threshold.append(thresholds[best_threshold_index])
+        threshold_list.append(thresholds[best_threshold_index])
         _, _, accuracy[fold_idx] = calculate_accuracy(
             thresholds[best_threshold_index], dist[test_set],
             actual_issame[test_set])
 
     tpr = np.mean(tprs, 0)
     fpr = np.mean(fprs, 0)
-    return tpr, fpr, accuracy, threshold
+    return tpr, fpr, accuracy, threshold_list
 
 
 def calculate_accuracy(threshold, dist, actual_issame):
