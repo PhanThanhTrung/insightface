@@ -82,7 +82,8 @@ def calculate_roc(thresholds,
         dist = np.sum(np.square(diff), 1)
     elif pca == 1 and metrics == "consine":
         diff = np.dot(embeddings1, embeddings2)
-
+    
+    print(np.max(diff), " ", np.min(diff))
     threshold_list =[]
     for fold_idx, (train_set, test_set) in enumerate(k_fold.split(indices)):
         #print('train_set', train_set)
@@ -143,7 +144,8 @@ def calculate_val(thresholds,
                   embeddings2,
                   actual_issame,
                   far_target,
-                  nrof_folds=10):
+                  nrof_folds=10, 
+                  metrics="euler"):
     assert (embeddings1.shape[0] == embeddings2.shape[0])
     assert (embeddings1.shape[1] == embeddings2.shape[1])
     nrof_pairs = min(len(actual_issame), embeddings1.shape[0])
@@ -152,11 +154,14 @@ def calculate_val(thresholds,
 
     val = np.zeros(nrof_folds)
     far = np.zeros(nrof_folds)
+    if metrics == "euler":
+        diff = np.subtract(embeddings1, embeddings2)
+        dist = np.sum(np.square(diff), 1)
+        indices = np.arange(nrof_pairs)
+    elif metrics == "consine":
+        diff = np.dot(embeddings1, embeddings2)
 
-    diff = np.subtract(embeddings1, embeddings2)
-    dist = np.sum(np.square(diff), 1)
-    indices = np.arange(nrof_pairs)
-
+    print(np.max(diff), " ", np.min(diff))
     for fold_idx, (train_set, test_set) in enumerate(k_fold.split(indices)):
 
         # Find the threshold that gives FAR = far_target
@@ -210,7 +215,8 @@ def evaluate(embeddings, actual_issame, nrof_folds=10, pca=0,metrics="euler"):
                                             embeddings2,
                                             np.asarray(actual_issame),
                                             nrof_folds=nrof_folds,
-                                            pca=pca)
+                                            pca=pca,
+                                            metrics="euler")
         thresholds = np.arange(0, 4, 0.001)
         val, val_std, far = calculate_val(thresholds,
                                             embeddings1,
@@ -226,7 +232,8 @@ def evaluate(embeddings, actual_issame, nrof_folds=10, pca=0,metrics="euler"):
                                             embeddings2,
                                             np.asarray(actual_issame),
                                             nrof_folds=nrof_folds,
-                                            pca=pca)
+                                            pca=pca,
+                                            metrics="cosine")
         thresholds = np.arange(0, 1, 0.0001)
         val, val_std, far = calculate_val(thresholds,
                                             embeddings1,
