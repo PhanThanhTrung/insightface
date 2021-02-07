@@ -340,7 +340,7 @@ def test(data_set,
     print('infer time', time_consumed)
     _, _, accuracy,threshold, val, val_std, far = evaluate(embeddings,
                                                  issame_list,
-                                                 nrof_folds=nfolds)
+                                                 nrof_folds=nfolds, metrics= "consine")
     acc2, std2, threshold = np.mean(accuracy), np.std(accuracy), np.mean(np.array(threshold))
     return acc1, std1, acc2, threshold, std2, _xnorm, embeddings_list
 
@@ -623,7 +623,7 @@ if __name__ == '__main__':
         dataset_name =path.split('/')[-1]
         data_set = load_bin(path, image_size)
         acc1, std1, acc2, threshold, std2, xnorm, embeddings_list = test(
-            data_set, model, args.batch_size, args.nfolds)
+            data_set, model, args.batch_size, metrics='consine', nfolds=args.nfolds)
         print('[%s]XNorm: %f' % (dataset_name, xnorm))
         print('[%s]Accuracy: %1.5f+-%1.5f' %
                 (dataset_name, acc1, std1))
