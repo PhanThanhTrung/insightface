@@ -186,7 +186,6 @@ def calculate_val_far(threshold, dist, actual_issame):
     n_diff = np.sum(np.logical_not(actual_issame))
     #print(true_accept, false_accept)
     #print(n_same, n_diff)
-    print(actual_issame)
     if n_same!=0:
         val = float(true_accept) / float(n_same)
     else:
@@ -274,6 +273,7 @@ def test(data_set,
     print('testing verification..')
     data_list = data_set[0]
     issame_list = data_set[1]
+    print(np.sum(issame_list)," ",issame_list.shape[0])
     model = onnx_model
     input_name = model.get_inputs()[0].name 
     output_name = model.get_outputs()[0].name
