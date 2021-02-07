@@ -1,4 +1,4 @@
-"""Helper for evaluation on the Labeled Faces in the Wild dataset 
+"""Helper for evaluation on the Labeled Faces in the Wild dataset
 """
 
 # MIT License
@@ -82,7 +82,7 @@ def calculate_roc(thresholds,
         dist = np.sum(np.square(diff), 1)
     elif pca == 1 and metrics == "consine":
         diff = np.dot(embeddings1, embeddings2)
-    
+
     threshold =[]
     for fold_idx, (train_set, test_set) in enumerate(k_fold.split(indices)):
         #print('train_set', train_set)
@@ -276,7 +276,7 @@ def test(data_set,
     data_list = data_set[0]
     issame_list = data_set[1]
     model = onnx_model
-    input_name = model.get_inputs()[0].name 
+    input_name = model.get_inputs()[0].name
     output_name = model.get_outputs()[0].name
     embeddings_list = []
     if data_extra is not None:
@@ -305,7 +305,7 @@ def test(data_set,
             #print(_embeddings.shape)
             if embeddings is None:
                 embeddings = np.zeros((data.shape[0], _embeddings.shape[1]))
-            embeddings[ba:bb, :] = _embeddings[(batch_size - count):, :]
+            embeddings[ba:bb, :] = _embeddings[:, :]
             ba = bb
         embeddings_list.append(embeddings)
     _xnorm = 0.0
@@ -624,5 +624,5 @@ if __name__ == '__main__':
                 (dataset_name, acc2, std2))
         print('[%s]Threshold: %f' %
         (dataset_name, threshold))
-        results.append({dataset_name:{ "acc":acc2, "threshold":threshold})
+        results.append({dataset_name:{ "acc":acc2, "threshold":threshold}})
     print(results)
