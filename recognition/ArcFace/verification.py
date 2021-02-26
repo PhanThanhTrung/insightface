@@ -1,4 +1,4 @@
-"""Helper for evaluation on the Labeled Faces in the Wild dataset 
+"""Helper for evaluation on the Labeled Faces in the Wild dataset
 """
 
 # MIT License
@@ -303,7 +303,7 @@ def test_onnx(data_set,
         while ba < data.shape[0]:
             bb = min(ba + batch_size, data.shape[0])
             count = bb - ba
-        
+
             _data = data[ba:ba+count, ...]
             #print(_data.shape, _label.shape)
             time0 = datetime.datetime.now()
@@ -311,11 +311,11 @@ def test_onnx(data_set,
             # db = mx.io.DataBatch(data=(_data, ), label=(_label, ))
             db = _data
 
-            inp_node_name = 'data'
-            oup_node_name = ['fc1']
+            inp_node_name = 'input'
+            oup_node_name = ['output']
             # inp_node_name = 'input'
             # oup_node_name = ['output']
-            
+
             net_out = model.run(oup_node_name, {inp_node_name:db})
 
             _embeddings = net_out[0]
@@ -325,10 +325,10 @@ def test_onnx(data_set,
             diff = time_now - time0
 
             time_consumed += diff.total_seconds()
-            
+
             if embeddings is None:
                 embeddings = np.zeros((data.shape[0], _embeddings.shape[1]))
-            try: 
+            try:
                 embeddings[ba:bb, :] = _embeddings[(batch_size - count):, :]
             except:
                 embeddings[ba:bb, :] = _embeddings[:count, :]
@@ -386,12 +386,12 @@ def test_mx(data_set,
         data = data_list[i]
         embeddings = None
         ba = 0
-        
+
         while ba < data.shape[0]:
             bb = min(ba + batch_size, data.shape[0])
             count = bb - ba
             _data = nd.slice_axis(data, axis=0, begin=bb - batch_size, end=bb)
-        
+
             time0 = datetime.datetime.now()
             if data_extra is None:
                 db = mx.io.DataBatch(data=(_data, ), label=(_label, ))
@@ -774,8 +774,8 @@ if __name__ == '__main__':
         print("Loading onnx model")
         model = onnxruntime.InferenceSession(onnx_path)
         nets.append(model)
-
     
+    print(len(nets))
     time_now = datetime.datetime.now()
     diff = time_now - time0
     print('model loading time', diff.total_seconds())
@@ -805,6 +805,6 @@ if __name__ == '__main__':
                     (ver_name_list[i], acc2, std2))
             print(f'[{ver_name_list[i]}]Mean threshold: {best_thr_acc}')
             results.append(acc2)
-            print('vcl: ' len(results))
-            results = np.array(results)
+        results = np.array(results)
+        print(results.shape)
         print('Max of [%s] is %1.5f' % (ver_name_list[i], np.max(results)))
