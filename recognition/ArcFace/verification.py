@@ -805,6 +805,4 @@ if __name__ == '__main__':
                     (ver_name_list[i], acc2, std2))
             print(f'[{ver_name_list[i]}]Mean threshold: {best_thr_acc}')
             results.append(acc2)
-        print(type(results))
-        print(ver_name_list[i])
-        print('Max of [%s] is %1.5f' % (ver_name_list[i], np.max(results)))
+        print('Max of [%s] is %1.5f' % (ver_name_list[i], np.max(results[i])))
