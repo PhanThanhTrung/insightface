@@ -44,6 +44,9 @@ import mxnet as mx
 from mxnet import ndarray as nd
 
 
+import onnx
+import onnxruntime
+
 class LFold:
     def __init__(self, n_splits=2, shuffle=False):
         self.n_splits = n_splits
@@ -76,27 +79,30 @@ def calculate_roc(thresholds,
     #print('pca', pca)
 
     if pca == 0:
-        diff = np.subtract(embeddings1, embeddings2)
-        dist = np.sum(np.square(diff), 1)
+        # L2 distance
+        # diff = np.subtract(embeddings1, embeddings2)
+        # dist = np.sum(np.square(diff), 1)
+        # Cosine distance
+        dist = np.dot(embeddings1, embeddings2.T).diagonal()
 
     for fold_idx, (train_set, test_set) in enumerate(k_fold.split(indices)):
         #print('train_set', train_set)
         #print('test_set', test_set)
-        if pca > 0:
-            print('doing pca on', fold_idx)
-            embed1_train = embeddings1[train_set]
-            embed2_train = embeddings2[train_set]
-            _embed_train = np.concatenate((embed1_train, embed2_train), axis=0)
-            #print(_embed_train.shape)
-            pca_model = PCA(n_components=pca)
-            pca_model.fit(_embed_train)
-            embed1 = pca_model.transform(embeddings1)
-            embed2 = pca_model.transform(embeddings2)
-            embed1 = sklearn.preprocessing.normalize(embed1)
-            embed2 = sklearn.preprocessing.normalize(embed2)
-            #print(embed1.shape, embed2.shape)
-            diff = np.subtract(embed1, embed2)
-            dist = np.sum(np.square(diff), 1)
+        # if pca > 0:
+        #     print('doing pca on', fold_idx)
+        #     embed1_train = embeddings1[train_set]
+        #     embed2_train = embeddings2[train_set]
+        #     _embed_train = np.concatenate((embed1_train, embed2_train), axis=0)
+        #     #print(_embed_train.shape)
+        #     pca_model = PCA(n_components=pca)
+        #     pca_model.fit(_embed_train)
+        #     embed1 = pca_model.transform(embeddings1)
+        #     embed2 = pca_model.transform(embeddings2)
+        #     embed1 = sklearn.preprocessing.normalize(embed1)
+        #     embed2 = sklearn.preprocessing.normalize(embed2)
+        #     #print(embed1.shape, embed2.shape)
+        #     diff = np.subtract(embed1, embed2)
+        #     dist = np.sum(np.square(diff), 1)
 
         # Find the best threshold for the fold
         acc_train = np.zeros((nrof_thresholds))
@@ -117,11 +123,13 @@ def calculate_roc(thresholds,
 
     tpr = np.mean(tprs, 0)
     fpr = np.mean(fprs, 0)
-    return tpr, fpr, accuracy
+    best_threshold_acc = thresholds[best_threshold_index]
+    return tpr, fpr, accuracy, best_threshold_acc
 
 
 def calculate_accuracy(threshold, dist, actual_issame):
-    predict_issame = np.less(dist, threshold)
+    # predict_issame = np.less(dist, threshold)
+    predict_issame = np.greater(dist, threshold)
     tp = np.sum(np.logical_and(predict_issame, actual_issame))
     fp = np.sum(np.logical_and(predict_issame, np.logical_not(actual_issame)))
     tn = np.sum(
@@ -192,23 +200,58 @@ def calculate_val_far(threshold, dist, actual_issame):
 
 def evaluate(embeddings, actual_issame, nrof_folds=10, pca=0):
     # Calculate evaluation metrics
-    thresholds = np.arange(0, 4, 0.01)
+    # thresholds = np.arange(0, 4, 0.01)
+    # thresholds = np.arange(0.5, 0.8, 0.001)
+    thresholds = [0.6]
     embeddings1 = embeddings[0::2]
     embeddings2 = embeddings[1::2]
-    tpr, fpr, accuracy = calculate_roc(thresholds,
+    tpr, fpr, accuracy, best_threshold_acc = calculate_roc(thresholds,
                                        embeddings1,
                                        embeddings2,
                                        np.asarray(actual_issame),
                                        nrof_folds=nrof_folds,
                                        pca=pca)
-    thresholds = np.arange(0, 4, 0.001)
-    val, val_std, far = calculate_val(thresholds,
-                                      embeddings1,
-                                      embeddings2,
-                                      np.asarray(actual_issame),
-                                      1e-3,
-                                      nrof_folds=nrof_folds)
-    return tpr, fpr, accuracy, val, val_std, far
+    thresholds = np.arange(0, 1, 1)
+    # val, val_std, far = calculate_val(thresholds,
+    #                                   embeddings1,
+    #                                   embeddings2,
+    #                                   np.asarray(actual_issame),
+    #                                   1e-3,
+    #                                   nrof_folds=nrof_folds)
+    val = val_std = far = 0
+    return tpr, fpr, accuracy, val, val_std, far, best_threshold_acc
+
+def load_bin_np(path, image_size):
+    try:
+        with open(path, 'rb') as f:
+            bins, issame_list = pickle.load(f)  #py2
+    except UnicodeDecodeError as e:
+        with open(path, 'rb') as f:
+            bins, issame_list = pickle.load(f, encoding='bytes')  #py3
+
+    data_list = []
+    for flip in [0, 1]:
+        data = np.empty(
+            (len(issame_list) * 2, 3, image_size[0], image_size[1])).astype(np.float32)
+        data_list.append(data)
+    for i in range(len(issame_list) * 2):
+        _bin = bins[i]
+        b_img = np.asarray(bytearray(_bin))
+        img = cv2.imdecode(b_img, cv2.IMREAD_COLOR)
+        if img.shape[0] != image_size[0]:
+            img = cv2.resize(img, image_size, cv2.INTER_CUBIC)
+        for flip in [0, 1]:
+            if flip == 1:
+                img = cv2.flip(img, 1)
+            # last_img = np.transpose(img, (2, 0, 1)).astype(np.float32)
+            last_img = (img.transpose((2, 0, 1)) - 127.5) * 0.0078125
+
+            data_list[flip][i][:] = last_img
+        if i % 1000 == 0:
+            print('loading bin', i)
+    print(data_list[0].shape)
+    return (data_list, issame_list)
+
 
 
 def load_bin(path, image_size):
@@ -239,7 +282,89 @@ def load_bin(path, image_size):
     return (data_list, issame_list)
 
 
-def test(data_set,
+def test_onnx(data_set,
+         onnx_model,
+         batch_size,
+         nfolds=10):
+    print('testing verification..')
+    data_list = data_set[0]
+    issame_list = data_set[1]
+    model = onnx_model
+    embeddings_list = []
+
+    time_consumed = 0.0
+
+    _label = np.ones((batch_size, ))
+
+    for i in range(len(data_list)):
+        data = data_list[i]
+        embeddings = None
+        ba = 0
+        while ba < data.shape[0]:
+            bb = min(ba + batch_size, data.shape[0])
+            count = bb - ba
+        
+            _data = data[ba:ba+count, ...]
+            #print(_data.shape, _label.shape)
+            time0 = datetime.datetime.now()
+
+            # db = mx.io.DataBatch(data=(_data, ), label=(_label, ))
+            db = _data
+
+            inp_node_name = 'data'
+            oup_node_name = ['fc1']
+            # inp_node_name = 'input'
+            # oup_node_name = ['output']
+            
+            net_out = model.run(oup_node_name, {inp_node_name:db})
+
+            _embeddings = net_out[0]
+
+            time_now = datetime.datetime.now()
+
+            diff = time_now - time0
+
+            time_consumed += diff.total_seconds()
+            
+            if embeddings is None:
+                embeddings = np.zeros((data.shape[0], _embeddings.shape[1]))
+            try: 
+                embeddings[ba:bb, :] = _embeddings[(batch_size - count):, :]
+            except:
+                embeddings[ba:bb, :] = _embeddings[:count, :]
+            ba = bb
+        embeddings_list.append(embeddings)
+
+    _xnorm = 0.0
+    _xnorm_cnt = 0
+    # for embed in embeddings_list:
+    #     for i in range(embed.shape[0]):
+    #         _em = embed[i]
+    #         _norm = np.linalg.norm(_em)
+    #         #print(_em.shape, _norm)
+    #         _xnorm += _norm
+    #         _xnorm_cnt += 1
+    # _xnorm /= _xnorm_cnt
+
+    embeddings = embeddings_list[0].copy()
+    embeddings = sklearn.preprocessing.normalize(embeddings)
+    acc1 = 0.0
+    std1 = 0.0
+
+    embeddings = embeddings_list[0] + embeddings_list[1]
+    embeddings = sklearn.preprocessing.normalize(embeddings)
+    print(embeddings.shape)
+    print('infer time', time_consumed)
+
+    _, _, accuracy, val, val_std, far, best_thr_acc = evaluate(embeddings,
+                                                 issame_list,
+                                                 nrof_folds=nfolds)
+    acc2, std2 = np.mean(accuracy), np.std(accuracy)
+    return acc1, std1, acc2, std2, _xnorm, embeddings_list, best_thr_acc
+
+
+
+def test_mx(data_set,
          mx_model,
          batch_size,
          nfolds=10,
@@ -261,11 +386,12 @@ def test(data_set,
         data = data_list[i]
         embeddings = None
         ba = 0
+        
         while ba < data.shape[0]:
             bb = min(ba + batch_size, data.shape[0])
             count = bb - ba
             _data = nd.slice_axis(data, axis=0, begin=bb - batch_size, end=bb)
-            #print(_data.shape, _label.shape)
+        
             time0 = datetime.datetime.now()
             if data_extra is None:
                 db = mx.io.DataBatch(data=(_data, ), label=(_label, ))
@@ -274,19 +400,8 @@ def test(data_set,
                                      label=(_label, ))
             model.forward(db, is_train=False)
             net_out = model.get_outputs()
-            #_arg, _aux = model.get_params()
-            #__arg = {}
-            #for k,v in _arg.iteritems():
-            #  __arg[k] = v.as_in_context(_ctx)
-            #_arg = __arg
-            #_arg["data"] = _data.as_in_context(_ctx)
-            #_arg["softmax_label"] = _label.as_in_context(_ctx)
-            #for k,v in _arg.iteritems():
-            #  print(k,v.context)
-            #exe = sym.bind(_ctx, _arg ,args_grad=None, grad_req="null", aux_states=_aux)
-            #exe.forward(is_train=False)
-            #net_out = exe.outputs
-            _embeddings = net_out[0].asnumpy()
+
+            _embeddings = net_out[0].asnumpy() # Shape: [batchsize, 512]
             time_now = datetime.datetime.now()
             diff = time_now - time0
             time_consumed += diff.total_seconds()
@@ -299,21 +414,22 @@ def test(data_set,
 
     _xnorm = 0.0
     _xnorm_cnt = 0
-    for embed in embeddings_list:
-        for i in range(embed.shape[0]):
-            _em = embed[i]
-            _norm = np.linalg.norm(_em)
-            #print(_em.shape, _norm)
-            _xnorm += _norm
-            _xnorm_cnt += 1
-    _xnorm /= _xnorm_cnt
+    # for embed in embeddings_list:
+    #     for i in range(embed.shape[0]):
+    #         _em = embed[i]
+    #         _norm = np.linalg.norm(_em)
+    #         #print(_em.shape, _norm)
+    #         _xnorm += _norm
+    #         _xnorm_cnt += 1
+    # _xnorm /= _xnorm_cnt
 
     embeddings = embeddings_list[0].copy()
     embeddings = sklearn.preprocessing.normalize(embeddings)
     acc1 = 0.0
     std1 = 0.0
-    #_, _, accuracy, val, val_std, far = evaluate(embeddings, issame_list, nrof_folds=10)
-    #acc1, std1 = np.mean(accuracy), np.std(accuracy)
+
+    # _, _, accuracy, val, val_std, far = evaluate(embeddings, issame_list, nrof_folds=10)
+    # acc1, std1 = np.mean(accuracy), np.std(accuracy)
 
     #print('Validation rate: %2.5f+-%2.5f @ FAR=%2.5f' % (val, val_std, far))
     #embeddings = np.concatenate(embeddings_list, axis=1)
@@ -321,11 +437,12 @@ def test(data_set,
     embeddings = sklearn.preprocessing.normalize(embeddings)
     print(embeddings.shape)
     print('infer time', time_consumed)
-    _, _, accuracy, val, val_std, far = evaluate(embeddings,
+
+    _, _, accuracy, val, val_std, far, best_thr_acc = evaluate(embeddings,
                                                  issame_list,
                                                  nrof_folds=nfolds)
     acc2, std2 = np.mean(accuracy), np.std(accuracy)
-    return acc1, std1, acc2, std2, _xnorm, embeddings_list
+    return acc1, std1, acc2, std2, _xnorm, embeddings_list, best_thr_acc
 
 
 def test_badcase(data_set,
@@ -634,17 +751,31 @@ if __name__ == '__main__':
     print('model number', len(epochs))
     time0 = datetime.datetime.now()
     for epoch in epochs:
-        print('loading', prefix, epoch)
-        sym, arg_params, aux_params = mx.model.load_checkpoint(prefix, epoch)
-        #arg_params, aux_params = ch_dev(arg_params, aux_params, ctx)
-        all_layers = sym.get_internals()
-        sym = all_layers['fc1_output']
-        model = mx.mod.Module(symbol=sym, context=ctx, label_names=None)
-        #model.bind(data_shapes=[('data', (args.batch_size, 3, image_size[0], image_size[1]))], label_shapes=[('softmax_label', (args.batch_size,))])
-        model.bind(data_shapes=[('data', (args.batch_size, 3, image_size[0],
-                                          image_size[1]))])
-        model.set_params(arg_params, aux_params)
+
+        # MXNET MODEL
+        # print('loading', prefix, epoch)
+        # sym, arg_params, aux_params = mx.model.load_checkpoint(prefix, epoch)
+        # #arg_params, aux_params = ch_dev(arg_params, aux_params, ctx)
+        # all_layers = sym.get_internals()
+        # sym = all_layers['fc1_output']
+        # model = mx.mod.Module(symbol=sym, context=ctx, label_names=None)
+        # #model.bind(data_shapes=[('data', (args.batch_size, 3, image_size[0], image_size[1]))], label_shapes=[('softmax_label', (args.batch_size,))])
+        # model.bind(data_shapes=[('data', (args.batch_size, 3, image_size[0],
+        #                                   image_size[1]))])
+        # model.set_params(arg_params, aux_params)
+        # nets.append(model)
+
+        # ONNX MODEL
+        # onnx_path = "./weights/santapo_insightface_resnet100.onnx"
+        # onnx_path = "./weights/model_fixed_batch.onnx"
+        # onnx_path = "./weights/embed_hrnet_03022021.onnx"
+        # onnx_path = "./weights/hrnet_ep80.onnx"
+        onnx_path = "/root/miles/Resnet50_irse-Ep96.onnx"
+        print("Loading onnx model")
+        model = onnxruntime.InferenceSession(onnx_path)
         nets.append(model)
+
+    
     time_now = datetime.datetime.now()
     diff = time_now - time0
     print('model loading time', diff.total_seconds())
@@ -655,26 +786,23 @@ if __name__ == '__main__':
         path = os.path.join(args.data_dir, name + ".bin")
         if os.path.exists(path):
             print('loading.. ', name)
-            data_set = load_bin(path, image_size)
+            # data_set = load_bin(path, image_size)
+            data_set = load_bin_np(path, image_size)
             ver_list.append(data_set)
             ver_name_list.append(name)
 
-    if args.mode == 0:
-        for i in range(len(ver_list)):
-            results = []
-            for model in nets:
-                acc1, std1, acc2, std2, xnorm, embeddings_list = test(
-                    ver_list[i], model, args.batch_size, args.nfolds)
-                print('[%s]XNorm: %f' % (ver_name_list[i], xnorm))
-                print('[%s]Accuracy: %1.5f+-%1.5f' %
-                      (ver_name_list[i], acc1, std1))
-                print('[%s]Accuracy-Flip: %1.5f+-%1.5f' %
-                      (ver_name_list[i], acc2, std2))
-                results.append(acc2)
-            print('Max of [%s] is %1.5f' % (ver_name_list[i], np.max(results)))
-    elif args.mode == 1:
-        model = nets[0]
-        test_badcase(ver_list[0], model, args.batch_size, args.target)
-    else:
-        model = nets[0]
-        dumpR(ver_list[0], model, args.batch_size, args.target)
+    for i in range(len(ver_list)):
+        results = []
+        for model in nets:
+            # acc1, std1, acc2, std2, xnorm, embeddings_list, best_thr_acc = test_mx(
+            #     ver_list[i], model, args.batch_size, args.nfolds)
+            acc1, std1, acc2, std2, xnorm, embeddings_list, best_thr_acc = test_onnx(
+                ver_list[i], model, args.batch_size, args.nfolds)
+            print('[%s]XNorm: %f' % (ver_name_list[i], xnorm))
+            print('[%s]Accuracy: %1.5f+-%1.5f' %
+                    (ver_name_list[i], acc1, std1))
+            print('[%s]Accuracy-Flip: %1.5f+-%1.5f' %
+                    (ver_name_list[i], acc2, std2))
+            print(f'[{ver_name_list[i]}]Mean threshold: {best_thr_acc}')
+            results.append(acc2)
+        print('Max of [%s] is %1.5f' % (ver_name_list[i], np.max(results)))
