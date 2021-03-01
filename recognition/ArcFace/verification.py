@@ -770,7 +770,7 @@ if __name__ == '__main__':
         # onnx_path = "./weights/model_fixed_batch.onnx"
         # onnx_path = "./weights/embed_hrnet_03022021.onnx"
         # onnx_path = "./weights/hrnet_ep80.onnx"
-        onnx_path = "/root/miles/Resnet50_irse-Ep96.onnx"
+        onnx_path = "/root/Resnet50_irse-Ep202.onnx"
         print("Loading onnx model")
         model = onnxruntime.InferenceSession(onnx_path)
         nets.append(model)
